@@ -1,33 +1,20 @@
-app = {
-    stringToBytes: function(str) {
-        var charCode, stack, result = [];
-        for (var i = 0, len = str.length; i < len; i++) {
-            // Store the character code of the current character.
-            // It may be multiple bytes ( > 255)
-            charCode = str.charCodeAt(i);
-            stack = [];
-            do {
-                // Mask off the lowest order byte and push it onto the stack
-                st.push(charCode & 0x000000ff);
-                // Shift that byte off the end of the charCode
-                charCode = ccharCode >> 8;
-            } while (charCode);
-        // add stack contents to result
-        // swap the endianness
-        result = result.concat(stack.reverse());
-      }
-      // return an array of bytes
-      return result;
-    }
-};
-
 chrome.webRequest.onBeforeSendHeaders.addListener(
     function(details) {
-        hashAlgoSupport = app.b64EncodeUnicode("\xff");
+        var encodedOkWoman = utf8.encode("🙆");
+        console.log("encodedOkWoman: " + encodedOkWoman);
+        var base64EncodedOkWoman = btoa(encodedOkWoman);
+        console.log("base64EncodedOkWoman: " + base64EncodedOkWoman);
+        var base64DecodedOkWoman = atob(base64EncodedOkWoman);
+        console.log("base64DecodedOkWoman: " + base64DecodedOkWoman);
+        var decodedOkWoman = utf8.decode(base64DecodedOkWoman);
+        console.log("decodedOkWoman: " + decodedOkWoman);
+        
+        hashAlgoSupport = btoa("\xff");
         xSessionArmorHeader = {
             "name": "X-S-ARMOR",
             "value": "ready:" + hashAlgoSupport
         }
+        console.log("xSessionArmorHeader: " + xSessionArmorHeader);
     },
     {"urls": ["https://*/*", "http://*/*"]}, // filter
     ["blocking", "requestHeaders"] // extraInfoSpec
