@@ -1,21 +1,13 @@
 chrome.webRequest.onBeforeSendHeaders.addListener(
     function(details) {
-        var encodedOkWoman = utf8.encode("🙆");
-        console.log("encodedOkWoman: " + encodedOkWoman);
-        var base64EncodedOkWoman = btoa(encodedOkWoman);
-        console.log("base64EncodedOkWoman: " + base64EncodedOkWoman);
-        var base64DecodedOkWoman = atob(base64EncodedOkWoman);
-        console.log("base64DecodedOkWoman: " + base64DecodedOkWoman);
-        var decodedOkWoman = utf8.decode(base64DecodedOkWoman);
-        console.log("decodedOkWoman: " + decodedOkWoman);
-        
-        hashAlgoSupport = btoa("\xff");
+        hashAlgoSupport = btoa("\x01\x01");
         xSessionArmorHeader = {
-            "name": "X-S-ARMOR",
-            "value": "ready:" + hashAlgoSupport
+            "name": "X-S-Armor",
+            "value": "r:" + hashAlgoSupport
         }
-        console.log("xSessionArmorHeader: " + xSessionArmorHeader);
+        details.requestHeaders.push(xSessionArmorHeader);
+        return {requestHeaders: details.requestHeaders};
     },
-    {"urls": ["https://*/*", "http://*/*"]}, // filter
-    ["blocking", "requestHeaders"] // extraInfoSpec
+    {"urls": ["https://*/*", "http://*/*"]},
+    ["blocking", "requestHeaders"]
 );
