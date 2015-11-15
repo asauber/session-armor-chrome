@@ -1,6 +1,6 @@
 chrome.webRequest.onBeforeSendHeaders.addListener(
     function(details) {
-        hashAlgoSupport = btoa("\x01\x01");
+        hashAlgoSupport = btoa("\x01\x05");
         xSessionArmorHeader = {
             "name": "X-S-Armor",
             "value": "r:" + hashAlgoSupport
