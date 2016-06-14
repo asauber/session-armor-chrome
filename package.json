@@ -1,0 +1,21 @@
+{
+  "name": "session-armor-chrome",
+  "version": "0.0.1",
+  "description": "Session Armor client implemented as Google Chrome Extension",
+  "main": "main.js",
+  "scripts": {
+    "test": "mocha"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@bitbucket.org/asauber/session-armor-chrome.git"
+  },
+  "keywords": [
+    "security",
+    "chrome-extension",
+    "sessionarmor"
+  ],
+  "author": "Andrew Sauber",
+  "license": "BSD-3-Clause",
+  "homepage": "https://bitbucket.org/asauber/session-armor-chrome#readme"
+}
