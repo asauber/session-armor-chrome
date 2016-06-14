@@ -15,6 +15,9 @@
     "chrome-extension",
     "sessionarmor"
   ],
+  "dependencies": {
+    "underscore": "^1.8.3"
+  },
   "author": "Andrew Sauber",
   "license": "BSD-3-Clause",
   "homepage": "https://bitbucket.org/asauber/session-armor-chrome#readme"
