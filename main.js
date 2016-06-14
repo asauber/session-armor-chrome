@@ -1,4 +1,4 @@
-re
+var _ = require("underscore");
 
 var hashAlgoMask = btoa("\x01\x05");
 
@@ -13,7 +13,9 @@ function domainHasSession(url) {
 };
 
 function objToHeaderString(obj) {
-    
+    return _.map(_.keys(obj), function (key) {
+        return key + ':' + btoa(obj[key]);
+    }).join(';');
 }
 
 function genSignedHeader(details) {
@@ -21,7 +23,10 @@ function genSignedHeader(details) {
 };
 
 function genReadyHeader(details) {
-    return ;
+    var headerValues = objToHeaderString({
+        'r': hashAlgoMask
+    });
+    return headerValues;
 };
 
 chrome.webRequest.onBeforeSendHeaders.addListener(
