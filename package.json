@@ -16,6 +16,8 @@
     "sessionarmor"
   ],
   "dependencies": {
+    "jshashes": "^1.0.5",
+    "secure-compare": "^3.0.1",
     "underscore": "^1.8.3"
   },
   "author": "Andrew Sauber",

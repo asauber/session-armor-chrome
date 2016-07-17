@@ -1,4 +1,6 @@
 var _ = require("underscore");
+var Hashes = require("jshashes");
+var compare = require("secure-compare");
 
 var hashAlgoMask = btoa("\x01\x05");
 
@@ -51,10 +53,16 @@ function storeNewSession(url, headerValues) {
     localStorage[origin] = objToHeaderString(headerValues);
 }
 
-function invalidateSession(url) {
+function invalidateSession(url, serverMac) {
     var origin = getOrigin(url);
     var originValues = headerStringToObj(localStorage[origin]);
-    hmacKey = originValues['Kh']
+    var hmacKey = originValues['Kh'];
+    // TODO select hash module based on selected algo for origin
+    var hmac = new Hashes.SHA256({'utf8': false});
+    var ourMac = hmac.b64_hmac(hmacKey, "Session Expired");
+    serverMac = btoa(serverMac);
+    if (!compare(serverMac, ourMac)) return;
+    localStorage.removeItem(origin);
 }
 
 function onHeaderReceived(details) {
@@ -67,7 +75,7 @@ function onHeaderReceived(details) {
     if (headerValues.hasOwnProperty('s')) {
         storeNewSession(details.url, headerValues);
     } else if (headerValues.hasOwnProperty('i')) {
-        invalidateSession(details.url);
+        invalidateSession(details.url, headerValues['i']);
     }
     console.log(headerValues, details);
 }
