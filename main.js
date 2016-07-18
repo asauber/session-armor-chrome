@@ -4,6 +4,14 @@ var compare = require("secure-compare");
 
 var hashAlgoMask = btoa("\x01\x05");
 
+var hashModules = [
+    [1 << 0, Hashes.SHA256],
+//    [1 << 1, Hashes.SHA384],
+    [1 << 2, Hashes.SHA512],
+    [1 << 3, Hashes.RMD160]
+]
+hashModules = _.object(hashModules);
+
 function getOrigin(url) {
     // capture everything up to the first lone slash
     // including the scheme, host, and port
@@ -31,8 +39,24 @@ function headerStringToObj(str) {
     return headerValues;
 }
 
+function hmac(key, string, hashMask) {
+    // TODO select hash module based on selected algo for origin
+    var macObj = new hashModules[hashMask]({'utf8': false});
+    return macObj.b64_hmac(key, string);
+}
+
 function genSignedHeader(details) {
-    domainValues = headerStringToObj(localStorage[getOrigin(details.url)]);
+    domainValues = JSON.parse(localStorage[getOrigin(details.url)]);
+    hmacKey = domainValues['Kh'];
+    delete domainValues['Kh'];
+
+    // hmac headers
+    flatRequestHeaders = JSON.stringify(details.requestHeaders);
+    ourMac = hmac(hmacKey, flatRequestHeaders, domainValues['h']);
+
+    // add mac to request header
+
+
     return objToHeaderString(domainValues);
 }
 
@@ -49,17 +73,14 @@ function storeNewSession(url, headerValues) {
         console.log("Won't store SessionArmor session delivered insecurely.");
         return;
     }
-    // use the header string format for internal serialization
-    localStorage[origin] = objToHeaderString(headerValues);
+    localStorage[origin] = JSON.stringify(headerValues);
 }
 
 function invalidateSession(url, serverMac) {
     var origin = getOrigin(url);
-    var originValues = headerStringToObj(localStorage[origin]);
+    var originValues = JSON.parse(localStorage[origin]);
     var hmacKey = originValues['Kh'];
-    // TODO select hash module based on selected algo for origin
-    var hmac = new Hashes.SHA256({'utf8': false});
-    var ourMac = hmac.b64_hmac(hmacKey, "Session Expired");
+    ourMac = hmac(hmacKey, "Session Expired", originValues['h']);
     serverMac = btoa(serverMac);
     if (!compare(serverMac, ourMac)) return;
     localStorage.removeItem(origin);
