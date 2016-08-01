@@ -2,7 +2,7 @@ var _ = require("underscore");
 var Hashes = require("jshashes");
 var compare = require("secure-compare");
 
-var hashAlgoMask = btoa("\x01\x05");
+var hashAlgoMask = "\x01\x05";
 
 var hashModules = [
     [1 << 0, Hashes.SHA256],
@@ -40,24 +40,23 @@ function headerStringToObj(str) {
 }
 
 function hmac(key, string, hashMask) {
-    // TODO select hash module based on selected algo for origin
     var macObj = new hashModules[hashMask]({'utf8': false});
     return macObj.b64_hmac(key, string);
 }
 
 function genSignedHeader(details) {
-    domainValues = JSON.parse(localStorage[getOrigin(details.url)]);
-    hmacKey = domainValues['Kh'];
-    delete domainValues['Kh'];
+    var originValues = JSON.parse(localStorage[getOrigin(details.url)]);
+    var hmacKey = originValues['Kh'];
+    delete originValues['Kh'];
 
     // hmac headers
-    flatRequestHeaders = JSON.stringify(details.requestHeaders);
-    ourMac = hmac(hmacKey, flatRequestHeaders, domainValues['h']);
+    var flatRequestHeaders = JSON.stringify(details.requestHeaders);
+    var ourMac = hmac(hmacKey, flatRequestHeaders, originValues['h']);
 
     // add mac to request header
 
 
-    return objToHeaderString(domainValues);
+    return objToHeaderString(originValues);
 }
 
 function genReadyHeader() {
@@ -80,7 +79,7 @@ function invalidateSession(url, serverMac) {
     var origin = getOrigin(url);
     var originValues = JSON.parse(localStorage[origin]);
     var hmacKey = originValues['Kh'];
-    ourMac = hmac(hmacKey, "Session Expired", originValues['h']);
+    var ourMac = hmac(hmacKey, "Session Expired", originValues['h']);
     serverMac = btoa(serverMac);
     if (!compare(serverMac, ourMac)) return;
     localStorage.removeItem(origin);
