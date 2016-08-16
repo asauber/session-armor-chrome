@@ -12,14 +12,100 @@ var hashModules = [
 ]
 hashModules = _.object(hashModules);
 
+var headerChoices = [
+    'Host',
+    'User-Agent',
+    'Accept',
+    'Connection',
+    'Accept-Encoding',
+    'Accept-Language',
+    'Referer',
+    'Cookie',
+    'Accept-Charset',
+    'If-Modified-Since',
+    'If-None-Match',
+    'Range',
+    'Date',
+    'Authorization',
+    'Cache-Control',
+    'Origin',
+    'Pragma',
+    'DNT',
+    'X-Csrf-Token',
+    'Sec-WebSocket-Version',
+    'Sec-WebSocket-Protocol',
+    'Sec-WebSocket-Key',
+    'Sec-WebSocket-Extensions',
+    'TE',
+    'X-Requested-With',
+    'X-Forwarded-For',
+    'X-Forwarded-Proto',
+    'Forwarded',
+    'From',
+    'HTTP2-Settings',
+    'Upgrade',
+    'Proxy-Authorization',
+    'If',
+    'If-Match',
+    'If-Range',
+    'If-Unmodified-Since',
+    'Max-Forwards',
+    'Prefer',
+    'Via',
+    'ALPN',
+    'Expect',
+    'Alt-Used',
+    'CalDAV-Timezones',
+    'Schedule-Reply',
+    'If-Schedule-Tag-Match',
+    'Destination',
+    'Lock-Token',
+    'Timeout',
+    'Ordering-Type',
+    'Overwrite',
+    'Position',
+    'Depth',
+    'SLUG',
+    'Trailer',
+    'MIME-Version'
+];
+
+function getHost(url) {
+    // capture everything up to the first lone slash
+    // excluding the scheme and port
+    return url.match(/(.+:\/\/)([^/:]+)(.*)?\/([^/]|$)/)[2];
+}
+
 function getOrigin(url) {
     // capture everything up to the first lone slash
     // including the scheme, host, and port
-    return url.match(/(.+\/\/[^/]+)\/([^/]|$)/)[1];
+    return url.match(/(.+:\/\/[^/]+)\/([^/]|$)/)[1];
+}
+
+function getPath(url) {
+    // capture everything after the first lone slash
+    var path = url.match(/(.+:\/\/[^/]+)\/(.*|$)/)[2];
+    return '/' + path;
 }
 
 function domainHasSession(url) {
     return localStorage[getOrigin(url)] !== undefined;
+}
+
+function unpackMask(mask) {
+    return stringToBytes(mask.slice(1));
+}
+
+function stringToBytes(str) {
+    var bytes = [], charCode;
+    for (var i = 0, len = str.length; i < len; ++i) {
+        charCode = str.charCodeAt(i);
+        if ((charCode & 0xFF00) >> 8) {
+            bytes.push((charCode & 0xFF00) >> 8);
+        }
+        bytes.push(charCode & 0xFF);
+    }
+    return bytes;
 }
 
 function objToHeaderString(obj) {
@@ -36,27 +122,91 @@ function headerStringToObj(str) {
         pair = pair.split(':');
         headerValues[pair[0]] = atob(pair[1]);
     });
+    headerValues.hashMask = unpackMask(headerValues.h)[0];
+    headerValues.headerMask = unpackMask(headerValues.ah);
     return headerValues;
 }
 
-function hmac(key, string, hashMask) {
+function hmac(key, hashMask, string) {
     var macObj = new hashModules[hashMask]({'utf8': false});
     return macObj.b64_hmac(key, string);
+}
+
+function headersToAuth(headerMask, extraHeaders, requestHeaders, url) {
+    var selectedHeaders = [];
+    for (var i = 0, len = headerMask.length; i < len; ++i) {
+        var currentByte = headerMask[len - 1 - i];
+        for (var j = 0; j < 8; ++j) {
+            if (currentByte & (1 << j)) {
+                selectedHeaders.push(headerChoices[i * 8 + j]);
+            }
+        }
+    }
+
+    // These need to be in bitmask order
+    var authHeaderValues = [];
+    for (var header of selectedHeaders) {
+        for (var reqHeader of requestHeaders) {
+            if (header === reqHeader.name) {
+                authHeaderValues.push(reqHeader.value);
+            }
+        }
+    }
+
+    if (selectedHeaders[0] === "Host") {
+        authHeaderValues.unshift(getHost(url));
+    }
+
+    return authHeaderValues;
+}
+
+function stringForAuth(authHeaderValues, expirationTime, path, body) {
+    // TODO: nonce will be an input here
+    // Request expiration time is now + 4 minutes
+    var macTokens = ['+', expirationTime];
+    macTokens = macTokens.concat(authHeaderValues);
+    macTokens = macTokens.concat(path);
+    // TODO: auth request body
+    macTokens.push(body || '');
+    return macTokens.join('|');
+}
+
+function requestHeaderString(originValues, ourMac, expirationTime) {
+    var requestValues = {}
+    requestValues.c = ourMac;
+    requestValues.t = expirationTime;
+    requestValues.s = originValues.s;
+    requestValues.ctr = originValues.ctr;
+    // TODO change mC to sm for 'server mac' for lowercase consistency
+    requestValues.sm = originValues.mC
+    requestValues.h = originValues.h;
+    requestValues.ah = originValues.ah;
+    if (originValues.eah) {
+        requestValues.eah = originValues.eah;
+    }
+    // TODO, check ah MSB for counter flag
+    //if (counter replay) {
+    // requestValues.n = next nonce
+    // }
+
+    return objToHeaderString(requestValues);
 }
 
 function genSignedHeader(details) {
     var originValues = JSON.parse(localStorage[getOrigin(details.url)]);
     var hmacKey = originValues['Kh'];
-    delete originValues['Kh'];
 
     // hmac headers
-    var flatRequestHeaders = JSON.stringify(details.requestHeaders);
-    var ourMac = hmac(hmacKey, flatRequestHeaders, originValues['h']);
+    var expirationTime = Math.floor(Date.now() / 1000) + 60 * 4;
+    var path = getPath(details.url);
+    var body = '' // details.body?
+    var authHeaders = headersToAuth(originValues.headerMask, [],
+                                    details.requestHeaders, details.url);
+    var authString = stringForAuth(authHeaders, expirationTime, path, body);
+    var ourMac = hmac(hmacKey, originValues.hashMask, authString);
+    ourMac = atob(ourMac);
 
-    // add mac to request header
-
-
-    return objToHeaderString(originValues);
+    return requestHeaderString(originValues, ourMac, expirationTime);
 }
 
 function genReadyHeader() {
@@ -79,7 +229,7 @@ function invalidateSession(url, serverMac) {
     var origin = getOrigin(url);
     var originValues = JSON.parse(localStorage[origin]);
     var hmacKey = originValues['Kh'];
-    var ourMac = hmac(hmacKey, "Session Expired", originValues['h']);
+    var ourMac = hmac(hmacKey, "Session Expired", originValues.hashMask);
     serverMac = btoa(serverMac);
     if (!compare(serverMac, ourMac)) return;
     localStorage.removeItem(origin);
@@ -108,6 +258,10 @@ function beforeSendHeader(details) {
     details.requestHeaders.push({
         "name": "X-S-Armor",
         "value": headerValue 
+    });
+    details.requestHeaders.push({
+        "name": "Host",
+        "value": getHost(details.url)
     });
     return {requestHeaders: details.requestHeaders};
 }
