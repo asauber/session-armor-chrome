@@ -108,6 +108,27 @@ function stringToBytes(str) {
     return bytes;
 }
 
+function bytesToInt(bytes) {
+    var n = 0;
+    for (var i = bytes.length - 1, len = bytes.length; i >= 0; --i) {
+        n |= bytes[i] << (8 * (len - 1 - i));
+    }
+    return n;
+}
+
+function intToBytes(i) {
+    return [
+        (i >> 24 & 0x00ff),
+        (i >> 16 & 0x00ff),
+        (i >>  8 & 0x00ff),
+        (i >>  0 & 0x00ff)
+    ];
+}
+
+function bytesToString(bytes) {
+    return String.fromCharCode.apply(this, bytes);
+}
+
 function objToHeaderString(obj) {
     return _.map(_.keys(obj), function (key) {
         return key + ':' + btoa(obj[key]);
@@ -132,7 +153,7 @@ function hmac(key, hashMask, string) {
     return macObj.b64_hmac(key, string);
 }
 
-function headersToAuth(headerMask, extraHeaders, requestHeaders, url) {
+function headerValuesToAuth(headerMask, extraHeaders, requestHeaders, url) {
     var selectedHeaders = [];
     for (var i = 0, len = headerMask.length; i < len; ++i) {
         var currentByte = headerMask[len - 1 - i];
@@ -160,10 +181,12 @@ function headersToAuth(headerMask, extraHeaders, requestHeaders, url) {
     return authHeaderValues;
 }
 
-function stringForAuth(authHeaderValues, expirationTime, path, body) {
-    // TODO: nonce will be an input here
+function stringForAuth(nonce, expirationTime, authHeaderValues, path, body) {
     // Request expiration time is now + 4 minutes
     var macTokens = ['+', expirationTime];
+    if (nonce !== null) {
+        macTokens.unshift(nonce);
+    }
     macTokens = macTokens.concat(authHeaderValues);
     macTokens = macTokens.concat(path);
     // TODO: auth request body
@@ -171,7 +194,8 @@ function stringForAuth(authHeaderValues, expirationTime, path, body) {
     return macTokens.join('|');
 }
 
-function requestHeaderString(originValues, ourMac, expirationTime) {
+function requestHeaderString(originValues, ourMac, expirationTime,
+                             nonce) {
     var requestValues = {}
     requestValues.c = ourMac;
     requestValues.t = expirationTime;
@@ -184,10 +208,9 @@ function requestHeaderString(originValues, ourMac, expirationTime) {
     if (originValues.eah) {
         requestValues.eah = originValues.eah;
     }
-    // TODO, check ah MSB for counter flag
-    //if (counter replay) {
-    // requestValues.n = next nonce
-    // }
+    if (nonce !== null) {
+        requestValues.n = nonce;
+    }
 
     return objToHeaderString(requestValues);
 }
@@ -196,17 +219,23 @@ function genSignedHeader(details) {
     var originValues = JSON.parse(localStorage[getOrigin(details.url)]);
     var hmacKey = originValues['Kh'];
 
-    // hmac headers
+    // HMAC inputs
+
+    // TODO: check 'ah' for MSB indicator
+    var nonce = getNonce(details.url);
+    nonce = nonce ? setAndIncrementNonce(details.url, nonce) : null;
+
     var expirationTime = Math.floor(Date.now() / 1000) + 60 * 4;
     var path = getPath(details.url);
-    var body = '' // details.body?
-    var authHeaders = headersToAuth(originValues.headerMask, [],
-                                    details.requestHeaders, details.url);
-    var authString = stringForAuth(authHeaders, expirationTime, path, body);
+    var body = ''; // details.body?
+    var headerValues = headerValuesToAuth(originValues.headerMask, [],
+                                          details.requestHeaders, details.url);
+    var authString = stringForAuth(nonce, expirationTime,
+                                   headerValues, path, body);
     var ourMac = hmac(hmacKey, originValues.hashMask, authString);
     ourMac = atob(ourMac);
 
-    return requestHeaderString(originValues, ourMac, expirationTime);
+    return requestHeaderString(originValues, ourMac, expirationTime, nonce);
 }
 
 function genReadyHeader() {
@@ -216,12 +245,30 @@ function genReadyHeader() {
     return headerValue;
 }
 
+function getNonce(url) {
+    var origin = getOrigin(url);
+    return bytesToInt(stringToBytes(localStorage[origin + '|nonce']));
+}
+
+function setNonce(url, nonce) {
+    var origin = getOrigin(url);
+    nonce = bytesToString(intToBytes(nonce));
+    localStorage[origin + '|nonce'] = nonce;
+    return nonce;
+}
+
+function setAndIncrementNonce(url, nonce) {
+    nonce++;
+    return setNonce(url, nonce);
+}
+
 function storeNewSession(url, headerValues) {
     var origin = getOrigin(url);
     if (!origin.startsWith("https")) {
         console.log("Won't store SessionArmor session delivered insecurely.");
         return;
     }
+    setNonce(url, bytesToInt(stringToBytes(headerValues['n'])));
     localStorage[origin] = JSON.stringify(headerValues);
 }
 
