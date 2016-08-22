@@ -12,6 +12,8 @@ var hashModules = [
 ]
 hashModules = _.object(hashModules);
 
+var bodyCache = {}
+
 var headerChoices = [
     'Host',
     'User-Agent',
@@ -117,6 +119,13 @@ function bytesToInt(bytes) {
 }
 
 function intToBytes(i) {
+    // Not using an arbitrary precision implementation of this for two reasons
+    // 1. Bitwise operators in JavaScript convert operands to 32-bit signed
+    //    integer, unlike Python, which maintains arbitrary precision
+    // 2. If the input has it's MSB as 1, it's treated as negative number, and
+    //    gets 1-filled on the right when shifted, resulting in "negative" byte
+    //    values, not amenable to string encoding.
+    // Thus, this 0x00ff mask, which is used to kill the 1-filled bits.
     return [
         (i >> 24 & 0x00ff),
         (i >> 16 & 0x00ff),
@@ -189,7 +198,6 @@ function stringForAuth(nonce, expirationTime, authHeaderValues, path, body) {
     }
     macTokens = macTokens.concat(authHeaderValues);
     macTokens = macTokens.concat(path);
-    // TODO: auth request body
     macTokens.push(body || '');
     return macTokens.join('|');
 }
@@ -220,14 +228,13 @@ function genSignedHeader(details) {
     var hmacKey = originValues['Kh'];
 
     // HMAC inputs
-
-    // TODO: check 'ah' for MSB indicator
     var nonce = getNonce(details.url);
     nonce = nonce ? setAndIncrementNonce(details.url, nonce) : null;
 
     var expirationTime = Math.floor(Date.now() / 1000) + 60 * 4;
     var path = getPath(details.url);
-    var body = ''; // details.body?
+    var body = bodyCache[details.requestId];
+    delete bodyCache[details.requestId];
     var headerValues = headerValuesToAuth(originValues.headerMask, [],
                                           details.requestHeaders, details.url);
     var authString = stringForAuth(nonce, expirationTime,
@@ -312,6 +319,43 @@ function beforeSendHeader(details) {
     });
     return {requestHeaders: details.requestHeaders};
 }
+
+function extendedEncodeURIComponent(s) {
+    return encodeURIComponent(s).replace(/[()'!]/g, function(c) {
+        return '%' + c.charCodeAt(0).toString(16);
+    });
+}
+
+function formDataToString(formData) {
+    return _.map(Object.keys(formData), function(key) {
+        // each key has an array of values
+        return _.map(formData[key], function(value) {
+            return key + '=' +
+                   extendedEncodeURIComponent(value).replace(/%20/g, '+');
+        }).join('&');
+        // forms are encoded with key=value pairs joined with '&'
+        // keys can be repeated
+    }).join('&');
+}
+
+function beforeRequest(details) {
+    if (!details.requestBody) return;
+
+    if (details.requestBody.error) {
+        console.log("request body error: " + details.requestBody.error);
+    } else if (details.requestBody.formData) {
+        bodyCache[details.requestId] = formDataToString(
+            details.requestBody.formData);
+    } else if (details.requestBody.raw) {
+        bodyCache[details.requestId] = details.requestBody.raw;
+    }
+}
+
+chrome.webRequest.onBeforeRequest.addListener(
+    beforeRequest,
+    {"urls": ["https://*/*", "http://*/*"]},
+    ["blocking", "requestBody"]
+);
 
 chrome.webRequest.onBeforeSendHeaders.addListener(
     beforeSendHeader,
