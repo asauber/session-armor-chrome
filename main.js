@@ -301,7 +301,6 @@ function onHeaderReceived(details) {
     } else if (headerValues.hasOwnProperty('i')) {
         invalidateSession(details.url, headerValues['i']);
     }
-    console.log(headerValues, details);
 }
 
 function beforeSendHeader(details) {
@@ -339,7 +338,7 @@ function formDataToString(formData) {
 }
 
 function beforeRequest(details) {
-    if (!details.requestBody) return;
+    if (!domainHasSession(details.url) || !details.requestBody) return;
 
     if (details.requestBody.error) {
         console.log("request body error: " + details.requestBody.error);
