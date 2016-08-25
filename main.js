@@ -173,11 +173,14 @@ function headerValuesToAuth(headerMask, extraHeaders, requestHeaders, url) {
         }
     }
 
-    // These need to be in bitmask order
+    // Append the extra authenticated headers in their order
+    selectedHeaders = selectedHeaders.concat(extraHeaders);
+
+    // These need to be appended in the bitmask order
     var authHeaderValues = [];
     for (var header of selectedHeaders) {
         for (var reqHeader of requestHeaders) {
-            if (header === reqHeader.name) {
+            if (header.toLowerCase() === reqHeader.name.toLowerCase()) {
                 authHeaderValues.push(reqHeader.value);
             }
         }
@@ -235,7 +238,8 @@ function genSignedHeader(details) {
     var path = getPath(details.url);
     var body = bodyCache[details.requestId];
     delete bodyCache[details.requestId];
-    var headerValues = headerValuesToAuth(originValues.headerMask, [],
+    var headerValues = headerValuesToAuth(originValues.headerMask,
+                                          originValues.eah.split(','),
                                           details.requestHeaders, details.url);
     var authString = stringForAuth(nonce, expirationTime,
                                    headerValues, path, body);
@@ -342,11 +346,9 @@ function beforeRequest(details) {
 
     if (details.requestBody.error) {
         console.log("request body error: " + details.requestBody.error);
-    } else if (details.requestBody.formData) {
-        bodyCache[details.requestId] = formDataToString(
-            details.requestBody.formData);
     } else if (details.requestBody.raw) {
-        bodyCache[details.requestId] = details.requestBody.raw;
+        bodyCache[details.requestId] = String.fromCharCode.apply(null,
+                new Uint8Array(details.requestBody.raw[0].bytes));
     }
 }
 
