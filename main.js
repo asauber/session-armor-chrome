@@ -354,6 +354,26 @@ function beforeRequest(details) {
     if (details.requestBody.error) {
         console.log("request body error: " + details.requestBody.error);
     } else if (details.requestBody.raw) {
+        /*
+        Body authentication requires patching Chromium as follows
+        (as of 2016-08-24)
+        diff --git
+          a/extensions/browser/api/web_request/web_request_event_details.cc
+          b/extensions/browser/api/web_request/web_request_event_details.cc
+        index a9f2f83..835b0eb5 100644
+        --- a/extensions/browser/api/web_request/web_request_event_details.cc
+        +++ b/extensions/browser/api/web_request/web_request_event_details.cc
+        @@ -84,7 +84,6
+        @@ void WebRequestEventDetails::SetRequestBody(
+               const net::URLRequest* request) {
+             if (presenters[i]->Succeeded()) {
+               request_body->Set(kKeys[i], presenters[i]->Result());
+               some_succeeded = true;
+        -      break;
+             }
+           }
+        */
+
         bodyCache[details.requestId] = String.fromCharCode.apply(null,
                 new Uint8Array(details.requestBody.raw[0].bytes));
     }
