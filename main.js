@@ -1,3 +1,4 @@
+"use strict";
 var _ = require("underscore");
 var Hashes = require("jshashes");
 var compare = require("secure-compare");
@@ -144,6 +145,16 @@ function objToHeaderString(obj) {
     }).join(';');
 }
 
+function unpackMasks(headerValues) {
+    if (headerValues.h) {
+        headerValues.hashMask = unpackMask(headerValues.h)[0];
+    }
+    if (headerValues.ah) {
+        headerValues.headerMask = unpackMask(headerValues.ah);
+    }
+    return headerValues;
+}
+
 function headerStringToObj(str) {
     if (!str) return {};
     var pairs = str.split(';');
@@ -152,8 +163,7 @@ function headerStringToObj(str) {
         pair = pair.split(':');
         headerValues[pair[0]] = atob(pair[1]);
     });
-    headerValues.hashMask = unpackMask(headerValues.h)[0];
-    headerValues.headerMask = unpackMask(headerValues.ah);
+    headerValues = unpackMasks(headerValues);
     return headerValues;
 }
 
@@ -294,7 +304,7 @@ function invalidateSession(url, serverMac) {
     var origin = getOrigin(url);
     var originValues = JSON.parse(localStorage[origin]);
     var hmacKey = originValues['kh'];
-    var ourMac = hmac(hmacKey, "Session Expired", originValues.hashMask);
+    var ourMac = hmac(hmacKey, originValues.hashMask, "Session Expired");
     serverMac = btoa(serverMac);
     if (!compare(serverMac, ourMac)) return;
     localStorage.removeItem(origin);
@@ -373,7 +383,6 @@ function beforeRequest(details) {
              }
            }
         */
-
         bodyCache[details.requestId] = String.fromCharCode.apply(null,
                 new Uint8Array(details.requestBody.raw[0].bytes));
     }
