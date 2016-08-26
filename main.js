@@ -212,8 +212,7 @@ function requestHeaderString(originValues, ourMac, expirationTime,
     requestValues.t = expirationTime;
     requestValues.s = originValues.s;
     requestValues.ctr = originValues.ctr;
-    // TODO change mC to sm for 'server mac' for lowercase consistency
-    requestValues.sm = originValues.mC
+    requestValues.cm = originValues.cm
     requestValues.h = originValues.h;
     requestValues.ah = originValues.ah;
     if (originValues.eah) {
@@ -228,7 +227,7 @@ function requestHeaderString(originValues, ourMac, expirationTime,
 
 function genSignedHeader(details) {
     var originValues = JSON.parse(localStorage[getOrigin(details.url)]);
-    var hmacKey = originValues['Kh'];
+    var hmacKey = originValues['kh'];
 
     // HMAC inputs
     var nonce = getNonce(details.url);
@@ -258,7 +257,10 @@ function genReadyHeader() {
 
 function getNonce(url) {
     var origin = getOrigin(url);
-    return bytesToInt(stringToBytes(localStorage[origin + '|nonce']));
+    var nonce = localStorage[origin + '|nonce'];
+    return nonce ?
+        bytesToInt(stringToBytes(nonce)) :
+        null;
 }
 
 function setNonce(url, nonce) {
@@ -275,18 +277,23 @@ function setAndIncrementNonce(url, nonce) {
 
 function storeNewSession(url, headerValues) {
     var origin = getOrigin(url);
+
     if (!origin.startsWith("https")) {
         console.log("Won't store SessionArmor session delivered insecurely.");
         return;
     }
-    setNonce(url, bytesToInt(stringToBytes(headerValues['n'])));
+
+    if (headerValues['n']) {
+        setNonce(url, bytesToInt(stringToBytes(headerValues['n'])));
+    }
+
     localStorage[origin] = JSON.stringify(headerValues);
 }
 
 function invalidateSession(url, serverMac) {
     var origin = getOrigin(url);
     var originValues = JSON.parse(localStorage[origin]);
-    var hmacKey = originValues['Kh'];
+    var hmacKey = originValues['kh'];
     var ourMac = hmac(hmacKey, "Session Expired", originValues.hashMask);
     serverMac = btoa(serverMac);
     if (!compare(serverMac, ourMac)) return;
