@@ -120,13 +120,14 @@ function bytesToInt(bytes) {
 }
 
 function intToBytes(i) {
-    // Not using an arbitrary precision implementation of this for two reasons
+    // Not using an arbitrary precision implementation of this for two reasons:
     // 1. Bitwise operators in JavaScript convert operands to 32-bit signed
-    //    integer, unlike Python, which maintains arbitrary precision
+    //    integers, unlike Python, which maintains arbitrary precision.
     // 2. If the input has it's MSB as 1, it's treated as negative number, and
     //    gets 1-filled on the right when shifted, resulting in "negative" byte
-    //    values, not amenable to string encoding.
-    // Thus, this 0x00ff mask, which is used to kill the 1-filled bits.
+    //    values which are not amenable to string encoding.
+    // Thus, this 0x00ff mask, which is used to kill the 1-filled bits of
+    // parameters which happen to be negative when coerced.
     return [
         (i >> 24 & 0x00ff),
         (i >> 16 & 0x00ff),
@@ -203,9 +204,8 @@ function headerValuesToAuth(headerMask, extraHeaders, requestHeaders, url) {
     return authHeaderValues;
 }
 
-function stringForAuth(nonce, expirationTime, authHeaderValues, path, body) {
-    // Request expiration time is now + 4 minutes
-    var macTokens = ['+', expirationTime];
+function stringForAuth(nonce, requestTime, authHeaderValues, path, body) {
+    var macTokens = ['+', requestTime];
     if (nonce !== null) {
         macTokens.unshift(nonce);
     }
@@ -215,11 +215,10 @@ function stringForAuth(nonce, expirationTime, authHeaderValues, path, body) {
     return macTokens.join('|');
 }
 
-function requestHeaderString(originValues, ourMac, expirationTime,
-                             nonce) {
+function genHeaderString(originValues, ourMac, requestTime, nonce) {
     var requestValues = {}
     requestValues.c = ourMac;
-    requestValues.t = expirationTime;
+    requestValues.t = requestTime;
     requestValues.s = originValues.s;
     requestValues.ctr = originValues.ctr;
     requestValues.cm = originValues.cm
@@ -243,19 +242,19 @@ function genSignedHeader(details) {
     var nonce = getNonce(details.url);
     nonce = nonce ? setAndIncrementNonce(details.url, nonce) : null;
 
-    var expirationTime = Math.floor(Date.now() / 1000) + 60 * 4;
+    var requestTime = Math.floor(Date.now() / 1000);
     var path = getPath(details.url);
     var body = bodyCache[details.requestId];
     delete bodyCache[details.requestId];
     var headerValues = headerValuesToAuth(originValues.headerMask,
                                           originValues.eah.split(','),
                                           details.requestHeaders, details.url);
-    var authString = stringForAuth(nonce, expirationTime,
+    var authString = stringForAuth(nonce, requestTime,
                                    headerValues, path, body);
     var ourMac = hmac(hmacKey, originValues.hashMask, authString);
     ourMac = atob(ourMac);
 
-    return requestHeaderString(originValues, ourMac, expirationTime, nonce);
+    return genHeaderString(originValues, ourMac, requestTime, nonce);
 }
 
 function genReadyHeader() {
