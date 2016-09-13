@@ -197,15 +197,12 @@ function headerValuesToAuth(headerMask, extraHeaders, requestHeaders, url) {
         }
     }
 
-    if (selectedHeaders[0] === "Host") {
-        authHeaderValues.unshift(getHost(url));
-    }
-
     return authHeaderValues;
 }
 
-function stringForAuth(nonce, requestTime, authHeaderValues, path, body) {
-    var macTokens = ['+', requestTime];
+function stringForAuth(nonce, requestTime, lastRequestTime, authHeaderValues,
+                       path, body) {
+    var macTokens = ['+', requestTime, lastRequestTime];
     if (nonce !== null) {
         macTokens.unshift(nonce);
     }
@@ -215,10 +212,12 @@ function stringForAuth(nonce, requestTime, authHeaderValues, path, body) {
     return macTokens.join('|');
 }
 
-function genHeaderString(originValues, ourMac, requestTime, nonce) {
+function genHeaderString(originValues, ourMac, requestTime, lastRequestTime,
+                         nonce) {
     var requestValues = {}
     requestValues.c = ourMac;
     requestValues.t = requestTime;
+    requestValues.lt = lastRequestTime;
     requestValues.s = originValues.s;
     requestValues.ctr = originValues.ctr;
     requestValues.cm = originValues.cm
@@ -238,23 +237,24 @@ function genSignedHeader(details) {
     var originValues = JSON.parse(localStorage[getOrigin(details.url)]);
     var hmacKey = originValues['kh'];
 
-    // HMAC inputs
     var nonce = getNonce(details.url);
     nonce = nonce ? setAndIncrementNonce(details.url, nonce) : null;
 
     var requestTime = Math.floor(Date.now() / 1000);
+    var lastRequestTime = localStorage[getOrigin(details.url) + '|lrt'];
     var path = getPath(details.url);
     var body = bodyCache[details.requestId];
     delete bodyCache[details.requestId];
     var headerValues = headerValuesToAuth(originValues.headerMask,
                                           originValues.eah.split(','),
                                           details.requestHeaders, details.url);
-    var authString = stringForAuth(nonce, requestTime,
+    var authString = stringForAuth(nonce, requestTime, lastRequestTime,
                                    headerValues, path, body);
     var ourMac = hmac(hmacKey, originValues.hashMask, authString);
     ourMac = atob(ourMac);
 
-    return genHeaderString(originValues, ourMac, requestTime, nonce);
+    return genHeaderString(originValues, ourMac, requestTime, lastRequestTime,
+                           nonce);
 }
 
 function genReadyHeader() {
@@ -307,6 +307,8 @@ function invalidateSession(url, serverMac) {
     serverMac = btoa(serverMac);
     if (!compare(serverMac, ourMac)) return;
     localStorage.removeItem(origin);
+    localStorage.removeItem(origin + '|nonce');
+    localStorage.removeItem(origin + '|lrt');
 }
 
 function onHeaderReceived(details) {
@@ -324,6 +326,10 @@ function onHeaderReceived(details) {
 }
 
 function beforeSendHeader(details) {
+    details.requestHeaders.push({
+        "name": "Host",
+        "value": getHost(details.url)
+    });
     var headerValue = 
         domainHasSession(details.url)
             ? genSignedHeader(details)
@@ -332,10 +338,11 @@ function beforeSendHeader(details) {
         "name": "X-S-Armor",
         "value": headerValue 
     });
-    details.requestHeaders.push({
-        "name": "Host",
-        "value": getHost(details.url)
-    });
+
+    // Set "last request time" for this domain to now
+    var lastRequestTimeKey = getOrigin(details.url) + '|lrt';
+    localStorage[lastRequestTimeKey] = Math.floor(Date.now() / 1000);
+
     return {requestHeaders: details.requestHeaders};
 }
 
