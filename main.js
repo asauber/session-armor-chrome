@@ -1,4 +1,14 @@
 "use strict";
+/*
+Session Armor Protocol, Google Chrome Extension
+
+Copyright (C) 2016 Andrew Sauber
+
+This software is licensed under the AGPLv3 open source license. See
+LICENSE.txt. The license can also be found at the following URL, please note
+the above copyright notice. https://www.gnu.org/licenses/agpl-3.0.en.html
+*/
+
 var _ = require("underscore");
 var Hashes = require("jshashes");
 var compare = require("secure-compare");
@@ -173,7 +183,7 @@ function hmac(key, hashMask, string) {
     return macObj.b64_hmac(key, string);
 }
 
-function headerValuesToAuth(headerMask, extraHeaders, requestHeaders, url) {
+function headerValuesToAuth(headerMask, extraHeaders, requestHeaders) {
     var selectedHeaders = [];
     for (var i = 0, len = headerMask.length; i < len; ++i) {
         var currentByte = headerMask[len - 1 - i];
@@ -247,7 +257,7 @@ function genSignedHeader(details) {
     delete bodyCache[details.requestId];
     var headerValues = headerValuesToAuth(originValues.headerMask,
                                           originValues.eah.split(','),
-                                          details.requestHeaders, details.url);
+                                          details.requestHeaders);
     var authString = stringForAuth(nonce, requestTime, lastRequestTime,
                                    headerValues, path, body);
     var ourMac = hmac(hmacKey, originValues.hashMask, authString);
@@ -391,6 +401,9 @@ function beforeRequest(details) {
         */
         bodyCache[details.requestId] = String.fromCharCode.apply(null,
                 new Uint8Array(details.requestBody.raw[0].bytes));
+    } else {
+        bodyCache[details.requestId] =
+            formDataToString(details.requestBody.formData);
     }
 }
 
