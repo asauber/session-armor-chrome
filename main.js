@@ -13,6 +13,8 @@ var _ = require("underscore");
 var Hashes = require("jshashes");
 var compare = require("secure-compare");
 
+/* request related */
+
 var hashAlgoMask = "\x01\x05";
 
 var hashModules = [
@@ -26,6 +28,7 @@ hashModules = _.object(hashModules);
 var bodyCache = {}
 
 var headerChoices = [
+    '', /* least-significant bit used for nonce flag */
     'Host',
     'User-Agent',
     'Accept',
@@ -247,19 +250,25 @@ function genSignedHeader(details) {
     var originValues = JSON.parse(localStorage[getOrigin(details.url)]);
     var hmacKey = originValues['kh'];
 
-    var nonce = getNonce(details.url);
+    if (usingNonceReplayPrevention(originValues.ah)) {
+        var nonce = getNonce(details.url);
+    }
     nonce = nonce ? setAndIncrementNonce(details.url, nonce) : null;
+
 
     var requestTime = Math.floor(Date.now() / 1000);
     var lastRequestTime = localStorage[getOrigin(details.url) + '|lrt'];
     var path = getPath(details.url);
     var body = bodyCache[details.requestId];
+
+    /* we use two seperate callbacks, so don't leak memory*/
     delete bodyCache[details.requestId];
-    var headerValues = headerValuesToAuth(originValues.headerMask,
+
+    var authHeaderValues = headerValuesToAuth(originValues.headerMask,
                                           originValues.eah.split(','),
                                           details.requestHeaders);
     var authString = stringForAuth(nonce, requestTime, lastRequestTime,
-                                   headerValues, path, body);
+                                   authHeaderValues, path, body);
     var ourMac = hmac(hmacKey, originValues.hashMask, authString);
     ourMac = atob(ourMac);
 
@@ -272,6 +281,11 @@ function genReadyHeader() {
         'r': hashAlgoMask
     });
     return headerValue;
+}
+
+function usingNonceReplayPrevention(headerMask) {
+    var charCode = headerMask.charCodeAt(headerMask.length - 1);
+    return !!(charCode & 0x01);
 }
 
 function getNonce(url) {
@@ -302,7 +316,7 @@ function storeNewSession(url, headerValues) {
         return;
     }
 
-    if (headerValues['n']) {
+    if (usingNonceReplayPrevention(headerValues.ah)) {
         setNonce(url, bytesToInt(stringToBytes(headerValues['n'])));
     }
 
@@ -356,6 +370,8 @@ function beforeSendHeader(details) {
     return {requestHeaders: details.requestHeaders};
 }
 
+/* body-related */
+
 function extendedEncodeURIComponent(s) {
     return encodeURIComponent(s).replace(/[()'!]/g, function(c) {
         return '%' + c.charCodeAt(0).toString(16);
@@ -375,14 +391,22 @@ function formDataToString(formData) {
 }
 
 function beforeRequest(details) {
+    /* Skip this step if this request does not have a related, active,
+     * SessionArmor session, or does not have body data */
     if (!domainHasSession(details.url) || !details.requestBody) return;
 
     if (details.requestBody.error) {
+        /* If Chrome has a problem parsing the request body,
+         * log and continue. The request will fail on the server side. */
         console.log("request body error: " + details.requestBody.error);
     } else if (details.requestBody.raw) {
         /*
-        Body authentication requires patching Chromium as follows
+        Raw body authentication requires patching Chromium as follows. This
+        forces Chrome to use the "raw" presenter for both the MIME type of
+        multipart/form-data _and_ the MIME type of 
+        application/x-www-form-urlencoded
         (as of 2016-08-24)
+
         diff --git
           a/extensions/browser/api/web_request/web_request_event_details.cc
           b/extensions/browser/api/web_request/web_request_event_details.cc
@@ -401,24 +425,24 @@ function beforeRequest(details) {
         */
         bodyCache[details.requestId] = String.fromCharCode.apply(null,
                 new Uint8Array(details.requestBody.raw[0].bytes));
-    } else {
-        bodyCache[details.requestId] =
-            formDataToString(details.requestBody.formData);
     }
 }
 
+/* handle body data and store it for HMAC */
 chrome.webRequest.onBeforeRequest.addListener(
     beforeRequest,
     {"urls": ["https://*/*", "http://*/*"]},
     ["blocking", "requestBody"]
 );
 
+/* prepare HMAC before requests */
 chrome.webRequest.onBeforeSendHeaders.addListener(
     beforeSendHeader,
     {"urls": ["https://*/*", "http://*/*"]},
     ["blocking", "requestHeaders"]
 );
 
+/* handle Session initialization */
 chrome.webRequest.onHeadersReceived.addListener(
     onHeaderReceived,
     {"urls": ["https://*/*", "http://*/*"]},
