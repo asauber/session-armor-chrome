@@ -232,8 +232,8 @@ function genHeaderString(originValues, ourMac, requestTime, lastRequestTime,
     requestValues.t = requestTime;
     requestValues.lt = lastRequestTime;
     requestValues.s = originValues.s;
-    requestValues.ctr = originValues.ctr;
-    requestValues.cm = originValues.cm
+    requestValues.iv = originValues.iv;
+    requestValues.tag = originValues.tag;
     requestValues.h = originValues.h;
     requestValues.ah = originValues.ah;
     if (originValues.eah) {
