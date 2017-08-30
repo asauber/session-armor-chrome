@@ -18,10 +18,10 @@ var compare = require("secure-compare");
 var hashAlgoMask = "\x01\x05";
 
 var hashModules = [
-    [1 << 0, Hashes.SHA256],
+    [1 << 0, new Hashes.SHA256({'utf8': false})],
 //    [1 << 1, Hashes.SHA384],
-    [1 << 2, Hashes.SHA512],
-    [1 << 3, Hashes.RMD160]
+    [1 << 2, new Hashes.SHA512({'utf8': false})],
+    [1 << 3, new Hashes.RMD160({'utf8': false})]
 ]
 hashModules = _.object(hashModules);
 
@@ -163,9 +163,11 @@ function unpackMasks(headerValues) {
     if (headerValues.h) {
         headerValues.hashMask = unpackMask(headerValues.h)[0];
     }
+    /*
     if (headerValues.ah) {
         headerValues.headerMask = unpackMask(headerValues.ah);
     }
+    */
     return headerValues;
 }
 
@@ -182,7 +184,7 @@ function headerStringToObj(str) {
 }
 
 function hmac(key, hashMask, string) {
-    var macObj = new hashModules[hashMask]({'utf8': false});
+    var macObj = hashModules[hashMask];
     return macObj.b64_hmac(key, string);
 }
 
@@ -216,10 +218,12 @@ function headerValuesToAuth(headerMask, extraHeaders, requestHeaders) {
 function stringForAuth(nonce, requestTime, lastRequestTime, authHeaderValues,
                        path, body) {
     var macTokens = ['+', requestTime, lastRequestTime];
+    /*
     if (nonce !== null) {
         macTokens.unshift(nonce);
     }
     macTokens = macTokens.concat(authHeaderValues);
+    */
     macTokens = macTokens.concat(path);
     macTokens.push(body || '');
     return macTokens.join('|');
@@ -235,6 +239,7 @@ function genHeaderString(originValues, ourMac, requestTime, lastRequestTime,
     requestValues.iv = originValues.iv;
     requestValues.tag = originValues.tag;
     requestValues.h = originValues.h;
+    /*
     requestValues.ah = originValues.ah;
     if (originValues.eah) {
         requestValues.eah = originValues.eah;
@@ -242,6 +247,7 @@ function genHeaderString(originValues, ourMac, requestTime, lastRequestTime,
     if (nonce !== null) {
         requestValues.n = nonce;
     }
+    */
 
     return objToHeaderString(requestValues);
 }
@@ -250,11 +256,12 @@ function genSignedHeader(details) {
     var originValues = JSON.parse(localStorage[getOrigin(details.url)]);
     var hmacKey = originValues['kh'];
 
+    /*
     if (usingNonceReplayPrevention(originValues.ah)) {
         var nonce = getNonce(details.url);
     }
     nonce = nonce ? setAndIncrementNonce(details.url, nonce) : null;
-
+    */
 
     var requestTime = Math.floor(Date.now() / 1000);
     var lastRequestTime = localStorage[getOrigin(details.url) + '|lrt'];
@@ -264,16 +271,18 @@ function genSignedHeader(details) {
     /* we use two seperate callbacks, so don't leak memory*/
     delete bodyCache[details.requestId];
 
+    /*
     var authHeaderValues = headerValuesToAuth(originValues.headerMask,
                                           originValues.eah.split(','),
                                           details.requestHeaders);
-    var authString = stringForAuth(nonce, requestTime, lastRequestTime,
-                                   authHeaderValues, path, body);
+    */
+    var authString = stringForAuth(null, requestTime, lastRequestTime,
+                                   null, path, body);
     var ourMac = hmac(hmacKey, originValues.hashMask, authString);
     ourMac = atob(ourMac);
 
     return genHeaderString(originValues, ourMac, requestTime, lastRequestTime,
-                           nonce);
+                           null);
 }
 
 function genReadyHeader() {
@@ -316,9 +325,11 @@ function storeNewSession(url, headerValues) {
         return;
     }
 
+    /*
     if (usingNonceReplayPrevention(headerValues.ah)) {
         setNonce(url, bytesToInt(stringToBytes(headerValues['n'])));
     }
+    */
 
     localStorage[origin] = JSON.stringify(headerValues);
 }
@@ -350,6 +361,7 @@ function onHeaderReceived(details) {
 }
 
 function beforeSendHeader(details) {
+    var startTime = performance.now();
     details.requestHeaders.push({
         "name": "Host",
         "value": getHost(details.url)
@@ -366,7 +378,7 @@ function beforeSendHeader(details) {
     // Set "last request time" for this domain to now
     var lastRequestTimeKey = getOrigin(details.url) + '|lrt';
     localStorage[lastRequestTimeKey] = Math.floor(Date.now() / 1000);
-
+    localStorage[getOrigin(details.url) + '|perfA'] = localStorage[getOrigin(details.url) + '|perfA'] + "," + (performance.now() - startTime);
     return {requestHeaders: details.requestHeaders};
 }
 
@@ -391,6 +403,8 @@ function formDataToString(formData) {
 }
 
 function beforeRequest(details) {
+    var startTime = performance.now();
+
     /* Skip this step if this request does not have a related, active,
      * SessionArmor session, or does not have body data */
     if (!domainHasSession(details.url) || !details.requestBody) return;
@@ -426,6 +440,8 @@ function beforeRequest(details) {
         bodyCache[details.requestId] = String.fromCharCode.apply(null,
                 new Uint8Array(details.requestBody.raw[0].bytes));
     }
+
+    localStorage[getOrigin(details.url) + '|perfB'] = localStorage[getOrigin(details.url) + '|perfB'] + "," + (performance.now() - startTime);
 }
 
 /* handle body data and store it for HMAC */
