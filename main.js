@@ -163,11 +163,9 @@ function unpackMasks(headerValues) {
     if (headerValues.h) {
         headerValues.hashMask = unpackMask(headerValues.h)[0];
     }
-    /*
     if (headerValues.ah) {
         headerValues.headerMask = unpackMask(headerValues.ah);
     }
-    */
     return headerValues;
 }
 
@@ -218,12 +216,10 @@ function headerValuesToAuth(headerMask, extraHeaders, requestHeaders) {
 function stringForAuth(nonce, requestTime, lastRequestTime, authHeaderValues,
                        path, body) {
     var macTokens = ['+', requestTime, lastRequestTime];
-    /*
     if (nonce !== null) {
         macTokens.unshift(nonce);
     }
     macTokens = macTokens.concat(authHeaderValues);
-    */
     macTokens = macTokens.concat(path);
     macTokens.push(body || '');
     return macTokens.join('|');
@@ -239,7 +235,6 @@ function genHeaderString(originValues, ourMac, requestTime, lastRequestTime,
     requestValues.iv = originValues.iv;
     requestValues.tag = originValues.tag;
     requestValues.h = originValues.h;
-    /*
     requestValues.ah = originValues.ah;
     if (originValues.eah) {
         requestValues.eah = originValues.eah;
@@ -247,7 +242,6 @@ function genHeaderString(originValues, ourMac, requestTime, lastRequestTime,
     if (nonce !== null) {
         requestValues.n = nonce;
     }
-    */
 
     return objToHeaderString(requestValues);
 }
@@ -256,12 +250,10 @@ function genSignedHeader(details) {
     var originValues = JSON.parse(localStorage[getOrigin(details.url)]);
     var hmacKey = originValues['kh'];
 
-    /*
     if (usingNonceReplayPrevention(originValues.ah)) {
         var nonce = getNonce(details.url);
     }
     nonce = nonce ? setAndIncrementNonce(details.url, nonce) : null;
-    */
 
     var requestTime = Math.floor(Date.now() / 1000);
     var lastRequestTime = localStorage[getOrigin(details.url) + '|lrt'];
@@ -271,13 +263,11 @@ function genSignedHeader(details) {
     /* we use two seperate callbacks, so don't leak memory*/
     delete bodyCache[details.requestId];
 
-    /*
     var authHeaderValues = headerValuesToAuth(originValues.headerMask,
                                           originValues.eah.split(','),
                                           details.requestHeaders);
-    */
     var authString = stringForAuth(null, requestTime, lastRequestTime,
-                                   null, path, body);
+                                   authHeaderValues, path, body);
     var ourMac = hmac(hmacKey, originValues.hashMask, authString);
     ourMac = atob(ourMac);
 
@@ -325,11 +315,9 @@ function storeNewSession(url, headerValues) {
         return;
     }
 
-    /*
     if (usingNonceReplayPrevention(headerValues.ah)) {
         setNonce(url, bytesToInt(stringToBytes(headerValues['n'])));
     }
-    */
 
     localStorage[origin] = JSON.stringify(headerValues);
 }
