@@ -13,6 +13,8 @@ var _ = require("underscore");
 var Hashes = require("jshashes");
 var compare = require("secure-compare");
 
+require("./status-icon");
+
 /* request related */
 
 var hashAlgoMask = "\x01\x05";
@@ -266,13 +268,13 @@ function genSignedHeader(details) {
     var authHeaderValues = headerValuesToAuth(originValues.headerMask,
                                           originValues.eah.split(','),
                                           details.requestHeaders);
-    var authString = stringForAuth(null, requestTime, lastRequestTime,
+    var authString = stringForAuth(nonce, requestTime, lastRequestTime,
                                    authHeaderValues, path, body);
     var ourMac = hmac(hmacKey, originValues.hashMask, authString);
     ourMac = atob(ourMac);
 
     return genHeaderString(originValues, ourMac, requestTime, lastRequestTime,
-                           null);
+                           nonce);
 }
 
 function genReadyHeader() {
@@ -349,7 +351,6 @@ function onHeaderReceived(details) {
 }
 
 function beforeSendHeader(details) {
-    var startTime = performance.now();
     details.requestHeaders.push({
         "name": "Host",
         "value": getHost(details.url)
@@ -366,7 +367,6 @@ function beforeSendHeader(details) {
     // Set "last request time" for this domain to now
     var lastRequestTimeKey = getOrigin(details.url) + '|lrt';
     localStorage[lastRequestTimeKey] = Math.floor(Date.now() / 1000);
-    localStorage[getOrigin(details.url) + '|perfA'] = localStorage[getOrigin(details.url) + '|perfA'] + "," + (performance.now() - startTime);
     return {requestHeaders: details.requestHeaders};
 }
 
@@ -391,8 +391,6 @@ function formDataToString(formData) {
 }
 
 function beforeRequest(details) {
-    var startTime = performance.now();
-
     /* Skip this step if this request does not have a related, active,
      * SessionArmor session, or does not have body data */
     if (!domainHasSession(details.url) || !details.requestBody) return;
@@ -428,8 +426,6 @@ function beforeRequest(details) {
         bodyCache[details.requestId] = String.fromCharCode.apply(null,
                 new Uint8Array(details.requestBody.raw[0].bytes));
     }
-
-    localStorage[getOrigin(details.url) + '|perfB'] = localStorage[getOrigin(details.url) + '|perfB'] + "," + (performance.now() - startTime);
 }
 
 /* handle body data and store it for HMAC */
